@@ -54,10 +54,29 @@ export function useDirectory() {
   const handleFolderSelect = async () => {
     try {
       setLoading(true);
-      const dirHandle = await window.showDirectoryPicker();
-      const struc = await processEntry(dirHandle);
-      setStructure(struc);
-      setError(null);
+      
+      if ('showDirectoryPicker' in window) {
+        const dirHandle = await window.showDirectoryPicker();
+        const struc = await processEntry(dirHandle);
+        setStructure(struc);
+        setError(null);
+      } else {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.webkitdirectory = true;
+        input.multiple = true;
+        
+        input.onchange = async (e) => {
+          const files = Array.from(input.files || []);
+          if (files.length > 0) {
+            const struc = await processFilesIntoStructure(files);
+            setStructure(struc);
+            setError(null);
+          }
+        };
+        
+        input.click();
+      }
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
         setError('Folder selection cancelled');
@@ -68,6 +87,49 @@ export function useDirectory() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const processFilesIntoStructure = async (files: File[]): Promise<DirectoryNode[]> => {
+    const structure: { [key: string]: DirectoryNode } = {};
+    
+    files.forEach(file => {
+      const pathParts = file.webkitRelativePath.split('/');
+      let currentPath = '';
+      
+      pathParts.forEach((part, index) => {
+        const isLast = index === pathParts.length - 1;
+        currentPath = currentPath ? `${currentPath}/${part}` : part;
+        
+        if (!structure[currentPath]) {
+          structure[currentPath] = {
+            name: part,
+            path: currentPath,
+            type: isLast ? 'file' : 'directory',
+            children: [],
+          };
+          
+          if (isLast) {
+            const fileHandle = {
+              kind: 'file' as const,
+              name: part,
+              getFile: async () => file
+            };
+            structure[currentPath].fileHandle = fileHandle as FileSystemFileHandle;
+          }
+        }
+        
+        if (index > 0) {
+          const parentPath = pathParts.slice(0, index).join('/');
+          if (!structure[parentPath].children.includes(structure[currentPath])) {
+            structure[parentPath].children.push(structure[currentPath]);
+          }
+        }
+      });
+    });
+    
+    return Object.values(structure).filter(node => 
+      !node.path.includes('/') || node.path.split('/').length === 1
+    );
   };
 
   async function processEntry(
