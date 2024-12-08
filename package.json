@@ -13,7 +13,8 @@
     "next": "15.0.4",
     "openai": "^4.76.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "tiktoken": "^1.0.17"
   },
   "devDependencies": {
     "@types/node": "^20",

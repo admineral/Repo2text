@@ -44,6 +44,57 @@ declare global {
   }
 }
 
+// Built-in ignore patterns
+const ignorePatterns = [
+  /node_modules\//,
+  /\.next\//,
+  /\.git\//,
+  /\.env*/,
+  /\.DS_Store/,
+  /\.pnp\./,
+  /\.yarn\//,
+  /coverage\//,
+  /out\//,
+  /build\//,
+  /\.vercel\//,
+  /\.tsbuildinfo$/,
+  /next-env\.d\.ts$/,
+  /npm-debug\.log*/,
+  /yarn-debug\.log*/,
+  /yarn-error\.log*/,
+  /\.ico$/, // Icon files
+  /favicon\.ico$/, // Favicon specifically
+  /\.(woff|woff2|ttf|eot|otf)$/, // Font files
+  /fonts\/.*\.(woff|woff2|ttf|eot|otf)$/, // Font files in fonts directory
+];
+
+// Function to read .gitignore file
+const readGitignore = async (files: File[]): Promise<RegExp[]> => {
+  const gitignoreFile = files.find(file => file.name === '.gitignore');
+  if (!gitignoreFile) return [];
+
+  try {
+    const content = await gitignoreFile.text();
+    return content
+      .split('\n')
+      .filter(line => line && !line.startsWith('#'))
+      .map(pattern => {
+        pattern = pattern.trim();
+        pattern = pattern
+          .replace(/\./g, '\\.')
+          .replace(/\*/g, '.*')
+          .replace(/\?/g, '.');
+        if (!pattern.startsWith('/')) {
+          pattern = '.*' + pattern;
+        }
+        return new RegExp(pattern);
+      });
+  } catch (error) {
+    console.warn('Failed to read .gitignore file:', error);
+    return [];
+  }
+};
+
 export function useDirectory() {
   const [structure, setStructure] = useState<DirectoryNode[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
@@ -61,12 +112,14 @@ export function useDirectory() {
         setStructure(struc);
         setError(null);
       } else {
+        // Fallback for browsers that do not support showDirectoryPicker
         const input = document.createElement('input');
         input.type = 'file';
-        input.webkitdirectory = true;
+        (input as HTMLInputElement & { webkitdirectory: boolean }).webkitdirectory = true; // Safari-specific attribute
+        (input as HTMLInputElement & { directory: boolean }).directory = true; // Non-standard attribute
         input.multiple = true;
-        
-        input.onchange = async (e) => {
+
+        input.onchange = async () => {
           const files = Array.from(input.files || []);
           if (files.length > 0) {
             const struc = await processFilesIntoStructure(files);
@@ -74,7 +127,7 @@ export function useDirectory() {
             setError(null);
           }
         };
-        
+
         input.click();
       }
     } catch (err) {
@@ -92,39 +145,51 @@ export function useDirectory() {
   const processFilesIntoStructure = async (files: File[]): Promise<DirectoryNode[]> => {
     const structure: { [key: string]: DirectoryNode } = {};
     
+    // Read .gitignore patterns if available
+    const gitignorePatterns = await readGitignore(files);
+    const allPatterns = [...ignorePatterns, ...gitignorePatterns];
+    
+    const shouldIgnoreWithPatterns = (path: string) => 
+      allPatterns.some(pattern => pattern.test(path));
+    
     files.forEach(file => {
-      const pathParts = file.webkitRelativePath.split('/');
-      let currentPath = '';
-      
-      pathParts.forEach((part, index) => {
-        const isLast = index === pathParts.length - 1;
-        currentPath = currentPath ? `${currentPath}/${part}` : part;
+      if (!shouldIgnoreWithPatterns(file.webkitRelativePath)) {
+        const pathParts = file.webkitRelativePath.split('/');
+        let currentPath = '';
         
-        if (!structure[currentPath]) {
-          structure[currentPath] = {
-            name: part,
-            path: currentPath,
-            type: isLast ? 'file' : 'directory',
-            children: [],
-          };
+        pathParts.forEach((part, index) => {
+          const isLast = index === pathParts.length - 1;
+          currentPath = currentPath ? `${currentPath}/${part}` : part;
           
-          if (isLast) {
-            const fileHandle = {
-              kind: 'file' as const,
+          if (!shouldIgnoreWithPatterns(currentPath) && !structure[currentPath]) {
+            structure[currentPath] = {
               name: part,
-              getFile: async () => file
+              path: currentPath,
+              type: isLast ? 'file' : 'directory',
+              children: [],
             };
-            structure[currentPath].fileHandle = fileHandle as FileSystemFileHandle;
+            
+            if (isLast) {
+              const fileHandle = {
+                kind: 'file' as const,
+                name: part,
+                getFile: async () => file
+              };
+              structure[currentPath].fileHandle = fileHandle as FileSystemFileHandle;
+            }
           }
-        }
-        
-        if (index > 0) {
-          const parentPath = pathParts.slice(0, index).join('/');
-          if (!structure[parentPath].children.includes(structure[currentPath])) {
-            structure[parentPath].children.push(structure[currentPath]);
+          
+          if (index > 0) {
+            const parentPath = pathParts.slice(0, index).join('/');
+            if (!shouldIgnoreWithPatterns(parentPath) && 
+                structure[parentPath] && 
+                structure[currentPath] && 
+                !structure[parentPath].children.includes(structure[currentPath])) {
+              structure[parentPath].children.push(structure[currentPath]);
+            }
           }
-        }
-      });
+        });
+      }
     });
     
     return Object.values(structure).filter(node => 
@@ -138,7 +203,10 @@ export function useDirectory() {
   ): Promise<DirectoryNode[]> {
     const entriesArr: FileSystemHandle[] = [];
     for await (const entry of handle.values()) {
-      entriesArr.push(entry);
+      const entryPath = path ? `${path}/${entry.name}` : entry.name;
+      if (!ignorePatterns.some(pattern => pattern.test(entryPath))) {
+        entriesArr.push(entry);
+      }
     }
 
     entriesArr.sort((a, b) => {
