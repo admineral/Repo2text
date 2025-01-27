@@ -39,7 +39,8 @@ export default function Page() {
     generatingDocs,
     handleGenerateDocumentation,
     expandedDocs,
-    setExpandedDocs
+    setExpandedDocs,
+    generateMDXDownload
   } = useDocumentation(structure, selectedFiles, selectedModel);
 
   return (
@@ -89,6 +90,7 @@ export default function Page() {
             generatingDocs={generatingDocs}
             handleGenerate={handleGenerate}
             handleGenerateDocumentation={handleGenerateDocumentation}
+            generateMDXDownload={generateMDXDownload}
           />
 
           {docStatus.length > 0 && (

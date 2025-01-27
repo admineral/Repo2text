@@ -6,13 +6,14 @@ const openai = new OpenAI({
 });
 
 // First, let's define the valid modes as a type
-type DocumentationMode = 'single' | 'single-with-context' | 'combined-readme';
+type DocumentationMode = 'single' | 'single-with-context' | 'combined-readme' | 'mdx-generation';
 
 // Then define the shape of the request body
 interface BaseRequestBody {
   files: string | string[];
   mode: DocumentationMode;
   model: string;
+  prompt?: string;
 }
 
 interface SingleWithContextRequest extends BaseRequestBody {
@@ -115,15 +116,64 @@ const DOCUMENTATION_PROMPTS: Record<DocumentationMode, string> = {
     - Important considerations
     
     Format using markdown with clear sections and subsections.
+  `,
+
+  'mdx-generation': `
+    Create comprehensive MDX documentation for this codebase. Your task is to analyze all the provided files and generate well-structured documentation that includes:
+
+    1. Project Overview
+       - Purpose and goals
+       - Key features
+       - Technologies used
+
+    2. Architecture Overview
+       - System design
+       - Component relationships
+       - Data flow
+
+    3. Component Documentation
+       - Detailed explanation of each major component
+       - Props, state, and methods
+       - Usage examples with code snippets
+
+    4. API Documentation
+       - Available endpoints
+       - Request/response formats
+       - Authentication if applicable
+
+    5. Setup Instructions
+       - Prerequisites
+       - Installation steps
+       - Configuration
+
+    6. Usage Examples
+       - Common use cases
+       - Code examples
+       - Best practices
+
+    7. Development Guide
+       - Project structure
+       - Development workflow
+       - Contributing guidelines
+
+    Format the documentation using MDX features including:
+    - Proper heading hierarchy
+    - Code blocks with syntax highlighting
+    - Import statements for components
+    - Interactive examples where relevant
+    - Tables for structured data
+    - Callouts for important notes
+    
+    Make the documentation both comprehensive and easy to navigate.
   `
 };
 
 export async function POST(request: Request) {
   try {
     const body: RequestBody = await request.json();
-    const { files, targetFile, mode, model } = body;
+    const { files, targetFile, mode, model, prompt } = body;
     
-    let systemPrompt = DOCUMENTATION_PROMPTS[mode];
+    let systemPrompt = prompt || DOCUMENTATION_PROMPTS[mode];
     
     if (mode === 'single-with-context') {
       const filesList = typeof files === 'string' 

@@ -1,0 +1,10 @@
+version: '3.8'
+
+services:
+  nextjs-app:
+    image: registry.gitlab.com/acp-group/acp-innsbruck/ibk_demo_ai_auto_docu:latest
+    container_name: ibk_demo_ai_auto_docu
+
+    ports:
+      - "8092:3000"
+    restart: unless-stopped

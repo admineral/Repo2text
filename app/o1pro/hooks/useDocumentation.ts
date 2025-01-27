@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
+import JSZip from 'jszip';
 
 interface DirectoryNode {
   name: string;
@@ -29,6 +30,12 @@ interface DocumentationStatus {
 }
 
 type DocGenerationMode = 'single' | 'single-with-context' | 'combined-readme';
+
+interface Documentation {
+  filePath: string;
+  content: string;
+  tokens?: number;
+}
 
 export function useDocumentation(structure: DirectoryNode[], selectedFiles: Set<string>, selectedModel: string) {
   const [documentation, setDocumentation] = useState<DocumentationResult[]>([]);
@@ -162,13 +169,103 @@ export function useDocumentation(structure: DirectoryNode[], selectedFiles: Set<
     }
   };
 
+  const generateMDXDownload = async () => {
+    if (!documentation.length) return;
+
+    try {
+      // Get content of all selected files
+      const allFilesContent = await getAllSelectedFilesContent(structure, selectedFiles);
+
+      // Send to OpenAI API for MDX generation
+      const response = await fetch('/api/openai', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          files: allFilesContent,
+          mode: 'mdx-generation',
+          model: selectedModel,
+          prompt: `Generate comprehensive MDX documentation for this codebase. Include:
+          1. Project Overview
+          2. Architecture Overview
+          3. Component Documentation
+          4. API Documentation (if any)
+          5. Setup Instructions
+          6. Usage Examples
+          7. Code Examples with explanations
+          Format the output in clean, well-structured MDX with proper headings, code blocks, and markdown features.`
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate MDX documentation');
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No reader available');
+
+      const decoder = new TextDecoder();
+      let mdxContent = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(5).trim();
+            if (!data || data === '[DONE]') continue;
+
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.type === 'content') {
+                mdxContent += parsed.content;
+              }
+            } catch (e) {
+              console.error('Error parsing chunk:', e);
+            }
+          }
+        }
+      }
+
+      // Create a zip file containing the MDX files
+      const zip = new JSZip();
+      
+      // Add main documentation file
+      zip.file('documentation.mdx', mdxContent);
+      
+      // Generate the zip file
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const zipUrl = URL.createObjectURL(zipBlob);
+      
+      // Create and trigger download
+      const a = document.createElement('a');
+      a.href = zipUrl;
+      a.download = 'project-documentation.zip';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      
+      // Cleanup
+      URL.revokeObjectURL(zipUrl);
+    } catch (error) {
+      console.error('Error generating MDX:', error);
+      alert('Failed to generate MDX documentation. Please try again.');
+    }
+  };
+
   return {
     documentation,
     docStatus,
     generatingDocs,
     handleGenerateDocumentation,
     expandedDocs,
-    setExpandedDocs
+    setExpandedDocs,
+    generateMDXDownload
   };
 }
 
