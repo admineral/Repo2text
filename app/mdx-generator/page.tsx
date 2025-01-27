@@ -2,7 +2,6 @@
 
 import React, { useState, useRef } from 'react';
 import { useDirectory } from '../o1pro/hooks/useDirectory';
-import { DirectoryTree } from '../o1pro/components/DirectoryExplorer/DirectoryTree';
 import JSZip from 'jszip';
 
 const DEFAULT_PROMPT = `Generate comprehensive MDX documentation for this codebase. Include:
@@ -18,10 +17,8 @@ Format the output in clean, well-structured MDX with proper headings, code block
 export default function MDXGeneratorPage() {
   const {
     structure,
-    selectedFiles,
     loading,
     handleFolderSelect,
-    handleSelectChange,
     MODEL_PRICES,
     selectedModel,
     setSelectedModel
@@ -367,18 +364,4 @@ ${content}
       )}
     </main>
   );
-}
-
-// Helper function to find a node by path
-function findNodeByPath(nodes: any[], targetPath: string): any {
-  for (const node of nodes) {
-    if (node.path === targetPath) {
-      return node;
-    }
-    if (node.type === "directory") {
-      const found = findNodeByPath(node.children, targetPath);
-      if (found) return found;
-    }
-  }
-  return null;
 } 

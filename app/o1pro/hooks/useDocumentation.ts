@@ -31,12 +31,6 @@ interface DocumentationStatus {
 
 type DocGenerationMode = 'single' | 'single-with-context' | 'combined-readme';
 
-interface Documentation {
-  filePath: string;
-  content: string;
-  tokens?: number;
-}
-
 export function useDocumentation(structure: DirectoryNode[], selectedFiles: Set<string>, selectedModel: string) {
   const [documentation, setDocumentation] = useState<DocumentationResult[]>([]);
   const [docStatus, setDocStatus] = useState<DocumentationStatus[]>([]);
